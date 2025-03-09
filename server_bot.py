@@ -20,7 +20,7 @@ import re
 #test comment
 
 DB_PATH = "/serverbot/server_logs.db"
-
+### --- DATABASE INITIALIZATION --- ###
 def initialize_database():
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
@@ -65,16 +65,42 @@ def initialize_database():
 
 
 
+def get_bot_token():
+    """Retrieve the bot token from the database."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM credentials WHERE key='bot_token'")
+        result = cursor.fetchone()
+        return result[0] if result else None
 
-# Replace 'YOUR_TELEGRAM_BOT_API_TOKEN' with your actual bot token
-TOKEN = 'YOUR_TELEGRAM_BOT_API_TOKEN'
+def get_authorized_users():
+    """Retrieve a list of authorized user IDs from the database."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM authorized_users")
+        users = [row[0] for row in cursor.fetchall()]
+    return users
+
+def get_admin_user():
+    """Retrieve the first admin user from the database."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM authorized_users WHERE role='admin' LIMIT 1")
+        result = cursor.fetchone()
+        return result[0] if result else None
+
+# Fetch bot token
+TOKEN = get_bot_token()
 if not TOKEN:
-    raise ValueError("Please set the TELEGRAM_BOT_TOKEN environment variable.")
+    raise ValueError("Bot token not found in the database!")
 
-# List of authorized user IDs
-AUTHORIZED_USERS = [262231547, 123456789]  # Add your user IDs here
-SHUTDOWN_USER_ID = 262231547  # User allowed to execute shutdown
-UPDATE_UPGRADE_USER_ID = 262231547  # User allowed to execute update/upgrade
+# Fetch authorized users
+AUTHORIZED_USERS = get_authorized_users()
+
+# Fetch first admin user for shutdown and update permissions
+SHUTDOWN_USER_ID = get_admin_user()
+UPDATE_UPGRADE_USER_ID = get_admin_user()
+
 
 # Configure logging with RotatingFileHandler
 log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -307,11 +333,16 @@ def log_network_activity():
 
 async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        if not check_authorization(update):
-            await update.message.reply_text("You are not authorized to use this bot.")
+        user_id = update.message.from_user.id
+
+        # Fetch the admin user ID dynamically
+        admin_user_id = get_admin_user()
+
+        if user_id != admin_user_id:
+            logger.warning(f"User {user_id} attempted to restart the server.")
+            await update.message.reply_text("You are not authorized to restart the server.")
             return
 
-        user_id = update.message.from_user.id
         logger.info(f"User {user_id} issued restart command.")
         await update.message.reply_text('Restarting server...')
         logger.info("Executing reboot command")
@@ -320,11 +351,16 @@ async def restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in restart command: {e}")
         await update.message.reply_text("An error occurred while restarting the server.")
 
+
 async def shutdown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.message.from_user.id
-        if user_id != SHUTDOWN_USER_ID:
-            logger.warning(f"User {user_id} attempted to shutdown the server.")
+
+        # Fetch the admin user ID dynamically
+        admin_user_id = get_admin_user()
+
+        if user_id != admin_user_id:
+            logger.warning(f"User {user_id} attempted to shut down the server.")
             await update.message.reply_text("You are not authorized to shut down the server.")
             return
 
@@ -334,6 +370,7 @@ async def shutdown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in shutdown command: {e}")
         await update.message.reply_text("An error occurred while shutting down the server.")
+
 
 async def check_uptime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -373,6 +410,17 @@ async def check_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in check_services command: {e}")
         await update.message.reply_text("An error occurred while checking the services.")
 
+def get_plex_token():
+    """Retrieve the Plex token from the database."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM credentials WHERE key='plex_token'")
+        result = cursor.fetchone()
+        return result[0] if result else None
+
+
+
+
 async def check_plex_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not check_authorization(update):
@@ -381,8 +429,15 @@ async def check_plex_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         user_id = update.message.from_user.id
         logger.info(f"User {user_id} checked Plex users.")
-        #Replace your plex token with your own
-        command = "curl http://localhost:32400/status/sessions?X-Plex-Token=YOURPLEXTOKEN"
+
+        # Retrieve the Plex token from the database
+        plex_token = get_plex_token()
+        if not plex_token:
+            await update.message.reply_text("❌ Plex token not found. Please store it using `store_plex_token()`.")
+            return
+
+        # Use the stored Plex token
+        command = f"curl http://localhost:32400/status/sessions?X-Plex-Token={plex_token}"
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
         xml_data = result.stdout
 
@@ -392,11 +447,13 @@ async def check_plex_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Extract user names
         users = [user.get('title') for user in root.findall('.//User')]
 
-        response = "Plex Users:\n" + "\n".join(users)
+        response = "👥 **Plex Users:**\n" + "\n".join(users) if users else "No active Plex users."
         await update.message.reply_text(response)
+
     except Exception as e:
         logger.error(f"Error in check_plex_users command: {e}")
         await update.message.reply_text("An error occurred while checking the Plex users.")
+
 
 async def check_cpu_temp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -633,7 +690,11 @@ async def check_running_processes(update: Update, context: ContextTypes.DEFAULT_
 async def confirm_update_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.message.from_user.id
-        if user_id != UPDATE_UPGRADE_USER_ID:
+
+        # Fetch the admin user dynamically
+        admin_user_id = get_admin_user()
+
+        if user_id != admin_user_id:
             logger.warning(f"User {user_id} attempted to confirm update and upgrade.")
             await update.message.reply_text("You are not authorized to update and upgrade the server.")
             return
@@ -642,6 +703,7 @@ async def confirm_update_upgrade(update: Update, context: ContextTypes.DEFAULT_T
         keyboard = [['Yes, proceed with Update & Upgrade', 'No, cancel Update & Upgrade']]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
         await update.message.reply_text('Are you sure you want to update and upgrade? This may take some time.', reply_markup=reply_markup)
+
     except Exception as e:
         logger.error(f"Error in confirm_update_upgrade command: {e}")
         await update.message.reply_text("An error occurred while requesting confirmation for update and upgrade.")
@@ -649,17 +711,24 @@ async def confirm_update_upgrade(update: Update, context: ContextTypes.DEFAULT_T
 async def update_upgrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.message.from_user.id
-        if user_id != UPDATE_UPGRADE_USER_ID:
+
+        # Fetch the admin user dynamically
+        admin_user_id = get_admin_user()
+
+        if user_id != admin_user_id:
             logger.warning(f"User {user_id} attempted to update and upgrade the server.")
             await update.message.reply_text("You are not authorized to update and upgrade the server.")
             return
 
         logger.info(f"User {user_id} issued update and upgrade command.")
         await update.message.reply_text('Updating package lists and upgrading all packages...')
+        
         subprocess.run(['sudo', 'apt-get', 'update'], capture_output=True, text=True)
         subprocess.run(['sudo', 'apt-get', 'upgrade', '-y'], capture_output=True, text=True)
+        
         await update.message.reply_text('Update and upgrade completed.', reply_markup=ReplyKeyboardRemove())
         await start(update, context)  # Restore the keyboard
+
     except Exception as e:
         logger.error(f"Error in update_upgrade command: {e}")
         await update.message.reply_text("An error occurred while updating and upgrading the server.")
@@ -670,9 +739,11 @@ async def cancel_update_upgrade(update: Update, context: ContextTypes.DEFAULT_TY
         logger.info(f"User {user_id} canceled the update and upgrade command.")
         await update.message.reply_text('Update and upgrade canceled.', reply_markup=ReplyKeyboardRemove())
         await start(update, context)  # Restore the keyboard
+
     except Exception as e:
         logger.error(f"Error in cancel_update_upgrade command: {e}")
         await update.message.reply_text("An error occurred while canceling the update and upgrade.")
+
 
 async def test_graph(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -858,7 +929,23 @@ def start_logging():
 def main():
 
     initialize_database()
-
+    def setup_credentials():
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS credentials (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT UNIQUE NOT NULL,
+                    value TEXT NOT NULL
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS authorized_users (
+                    user_id INTEGER PRIMARY KEY,
+                    role TEXT NOT NULL CHECK(role IN ('admin', 'standard'))
+                )
+            """)
+            conn.commit()
 
     # Start the temperature logging in a separate thread
     #temperature_thread = threading.Thread(target=start_temperature_logging, daemon=True)
