@@ -3,19 +3,26 @@ A Telegram bot for remotely managing and monitoring a Linux-based home server, i
 
 🚀 Features
 Category	Features
-Server Management	Restart, Shutdown, Update & Upgrade
-System Monitoring	CPU/GPU Temp, CPU Load, Memory Usage, Running Processes
-Storage Monitoring	HDD Capacity, Disk Usage Trends
-Network Monitoring	Network Speed, Network Activity Trends
-Plex Integration	View Active Plex Users
-Database & Logging	Stores logs in SQLite
+| Category              | Features                                                |
+|----------------------|---------------------------------------------------------|
+| Server Management     | Restart, Shutdown, Update & Upgrade                     |
+| System Monitoring     | CPU/GPU Temp, CPU Load, Memory Usage, Running Processes |
+| Storage Monitoring    | HDD Capacity, Disk Usage Trends                         |
+| Network Monitoring    | Network Speed, Network Activity Trends                  |
+| Plex Integration      | View Active Plex Users                                  |
+| Database & Logging    | Stores logs in SQLite                                   |
 
 🛠️ Setup Instructions
+
 1️⃣ Install Required Packages
 Run the following command to install dependencies:
 
+# Update package lists and install required system packages
 sudo apt update && sudo apt install -y python3 python3-pip sqlite3 ethtool
+
+# Install required Python packages
 pip install python-telegram-bot matplotlib psutil uptime gpustat
+
 
 2️⃣ Set Up a Telegram Bot
 
@@ -84,21 +91,23 @@ This bot is my solution, and while it still needs refinement, it’s a great sta
 🔹 Example Bot Commands
 After starting the bot with /start, you can send the following commands:
 
-Command	Description
-/restart	Restart the server (admin only)
-/shutdown	Shutdown the server (admin only)
-/uptime	Check server uptime
-/services	View active services
-/cputemp	View CPU temperature
-/gputemp	View GPU temperature
-/cpuload	View CPU load
-/memory	View memory usage
-/processes	View running processes
-/networkspeed	Check network speed
-/networkactivity	View network activity trends
-/hddcapacity	Check HDD capacity
-/diskusage	View disk usage trends
-/plex	Check active Plex users
+| Command            | Description                          |
+|--------------------|--------------------------------------|
+| /restart           | Restart the server (admin only)      |
+| /shutdown          | Shutdown the server (admin only)     |
+| /uptime            | Check server uptime                  |
+| /services          | View active services                 |
+| /cputemp           | View CPU temperature                 |
+| /gputemp           | View GPU temperature                 |
+| /cpuload           | View CPU load                        |
+| /memory            | View memory usage                    |
+| /processes         | View running processes               |
+| /networkspeed      | Check network speed                  |
+| /networkactivity   | View network activity trends         |
+| /hddcapacity       | Check HDD capacity                   |
+| /diskusage         | View disk usage trends               |
+| /plex              | Check active Plex users              |
+
 
 
 🔹 Future Improvements
